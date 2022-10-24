@@ -1,0 +1,201 @@
+---
+title: "Monitor Macroeconomico"
+output:
+  flexdashboard::flex_dashboard:
+    vertical_layout: fill
+    orientation: rows
+    social: menu
+    source_code: 'https://github.com/E30895/open/blob/main/R/dash.Rmd'
+runtime: shiny
+---
+
+```{r setup}
+knitr::opts_chunk$set(
+  warning = FALSE, 
+  message = FALSE, 
+  error = FALSE
+  )
+```
+
+
+```{r packages, echo=FALSE, results='hide'}
+library(flexdashboard)
+library(shiny)
+library(tidyverse)
+library(DT)
+library(ipeadatar) 
+library(sidrar)
+library(forecast)
+library(lubridate)
+library(plotly)
+library(htmlwidgets)
+library(gganimate)
+library(gifski)
+```
+
+
+```{r functions, echo=FALSE, results='hide'}
+
+```
+
+
+```{r dataset, echo=FALSE, results='hide'}
+dados = rbcb::get_series(
+  c(Inflação = 13522,
+    IPCA = 433, 
+    IGPM = 189,
+    SELIC = 4189,
+    CDI = 4392,
+    TR = 7812,
+    TJLP = 256,
+    Meta = 432),
+  start_date = "2000-01-01",
+  end_date = Sys.Date(),
+  as = "data.frame")
+```
+
+
+```{r datamap, echo=FALSE, results='hide'}
+inflacao = dados$Inflação
+ipca = dados$IPCA
+IGPM = dados$IGPM
+SELIC = dados$SELIC
+CDI = dados$CDI
+TR = dados$TR
+TJLP = dados$TJLP
+meta = dados$Meta
+
+
+data = left_join(inflacao, ipca, by = "date")
+data = left_join(data, IGPM, by = "date")
+data = left_join(data, SELIC, by = "date")
+data = left_join(data, CDI, by = "date")
+data = left_join(data, TR, by = "date")
+data = left_join(data, TJLP, by = "date")
+
+
+inflacao_atual = last(dados$Inflação) %>%
+  last()
+
+ipca_atual = last(dados$IPCA) %>%
+  last()
+
+juros_atual = last(dados$Meta) %>%
+  last()
+
+juros_reais = data[,5]-data[,2]
+juros_real = last(juros_reais) %>% last()
+```
+
+
+Sidebar {.sidebar}
+=======================================================================
+
+```{r}
+shiny::h1("sobre")
+shiny::h3("Desenvolvido para o acompanhamento das variáveis monetárias")
+
+shiny::dateRangeInput(
+  inputId = "fill",
+  label = shiny::h3("Escolha um período"),
+  min = min(inflacao$date),
+  max = max(inflacao$date),
+  start = min(inflacao$date),
+  end = max(inflacao$date),
+  language = "Pt-BR",
+  format = "yyyy-mm",
+  startview = "year",
+  separator = " - "
+  )
+
+
+shiny::varSelectInput(
+  inputId = "series",
+  label = shiny::h3("Escolha uma série"),
+  data = data[-1],
+  selected = names(data)[[2]],
+)
+
+```
+
+
+Politica Monetária
+=======================================================================
+
+
+Row
+-----------------------------------------------------------------------
+
+### Inflação atual {.value-box}
+```{r}
+renderValueBox({
+  valueBox(
+    value = inflacao_atual,
+    icon = "fa-percent",
+    color = "#3498DB"
+  )
+})
+```
+
+### Inflação %VAR {.value-box}
+```{r}
+renderValueBox({
+  valueBox(
+    value = ipca_atual,
+    icon = "fa-percent",
+    color = "#3498DB"
+  )
+})
+```
+
+### Taxa de juros - SELIC {.value-box}
+```{r}
+renderValueBox({
+  valueBox(
+    value = juros_atual,
+    icon = "fa-percent",
+    color = "#3498DB"
+  )
+})
+```
+
+### Juros real {.value-box}
+```{r}
+renderValueBox({
+  valueBox(
+    value = juros_real,
+    icon = "fa-percent",
+    color = "#3498DB"
+  )
+})
+```
+
+
+Row {data-height=1050}
+-----------------------------------------------------------------------
+
+### Series Temporais {data-width=800}
+```{r}
+renderPlotly(
+  data %>%
+    filter(date >= input$fill[1] & date <= input$fill[2]) %>%
+    ggplot() + 
+    aes(x = date, y = !!input$series) +
+    geom_line(color = "blue", size = 1) + 
+    labs(y = "%",
+         x = "", 
+         caption = "Fonte: bacen")
+)
+```
+
+### Histórico {data-width=600}
+```{r}
+DT::renderDT(
+  data %>%
+    DT::datatable(
+      options = list(pageLength = 14, order = list(list(1, 'desc'))),
+      caption = "Fonte: Banco Central do Brasil"
+  )
+)
+```
+
