@@ -3,11 +3,11 @@ title: "Monitor Macroeconomico"
 output:
   flexdashboard::flex_dashboard:
     vertical_layout: fill
-    orientation: rows
     social: menu
     source_code: 'https://github.com/E30895/open/blob/main/R/dash.Rmd'
 runtime: shiny
 ---
+
 
 ```{r setup}
 knitr::opts_chunk$set(
@@ -25,7 +25,6 @@ library(tidyverse)
 library(DT)
 library(ipeadatar) 
 library(sidrar)
-library(forecast)
 library(lubridate)
 library(plotly)
 library(htmlwidgets)
@@ -34,17 +33,30 @@ library(gifski)
 ```
 
 
-```{r functions, echo=FALSE, results='hide'}
+```{r credenciais, echo=FALSE, results='hide'}
+api.sidra1 = "/t/7060/n1/all/v/63/p/all/c315/7169,7170,7445,7486,7558,7625,7660,7712,7766,7786/d/v63%202"
+api.sidra2 = "/t/7060/n1/all/v/2265/p/all/c315/7169,7170,7445,7486,7558,7625,7660,7712,7766,7786/d/v2265%202"
+api.sidra3 = "/t/7060/n1/all/v/69/p/all/c315/7169,7170,7445,7486,7558,7625,7660,7712,7766,7786/d/v69%202"
+```
 
+
+```{r functions, echo=FALSE, results='hide'}
+datasetInput <- reactive({
+  switch(input$dataset,
+          "t.sidra.varmen" = t.sidra.varmen,
+          "t.sidra.acum12" = t.sidra.acum12,
+          "t.sidra.acumA" = t.sidra.acumA)
+  })
 ```
 
 
 ```{r dataset, echo=FALSE, results='hide'}
 dados = rbcb::get_series(
-  c(Inflação = 13522,
+  c(INFLAÇÃO = 13522,
     IPCA = 433, 
     IGPM = 189,
-    SELIC = 4189,
+    SELIC = 432,
+    #SELIC = 4189,
     CDI = 4392,
     TR = 7812,
     TJLP = 256,
@@ -52,11 +64,16 @@ dados = rbcb::get_series(
   start_date = "2000-01-01",
   end_date = Sys.Date(),
   as = "data.frame")
+
+
+sidra.varmen = get_sidra(api = api.sidra1)
+sidra.acum12 = get_sidra(api = api.sidra2)
+sidra.acumA = get_sidra(api = api.sidra3)
 ```
 
 
 ```{r datamap, echo=FALSE, results='hide'}
-inflacao = dados$Inflação
+INFLAÇÃO = dados$INFLAÇÃO
 ipca = dados$IPCA
 IGPM = dados$IGPM
 SELIC = dados$SELIC
@@ -65,16 +82,15 @@ TR = dados$TR
 TJLP = dados$TJLP
 meta = dados$Meta
 
-
-data = left_join(inflacao, ipca, by = "date")
+data = left_join(CDI, ipca, by = "date")
 data = left_join(data, IGPM, by = "date")
 data = left_join(data, SELIC, by = "date")
-data = left_join(data, CDI, by = "date")
+data = left_join(data, INFLAÇÃO, by = "date")
 data = left_join(data, TR, by = "date")
 data = left_join(data, TJLP, by = "date")
+data = select(data, date, SELIC, CDI, TJLP, TR, IPCA, IGPM, INFLAÇÃO)
 
-
-inflacao_atual = last(dados$Inflação) %>%
+inflacao_atual = last(dados$INFLAÇÃO) %>%
   last()
 
 ipca_atual = last(dados$IPCA) %>%
@@ -83,13 +99,86 @@ ipca_atual = last(dados$IPCA) %>%
 juros_atual = last(dados$Meta) %>%
   last()
 
-juros_reais = data[,5]-data[,2]
-juros_real = last(juros_reais) %>% last()
+juros_reais = data[,2]-data[,8] %>% tibble()
+dif = juros_reais$. %>% length()-2
+juros_reais = juros_reais[dif,]
+
+
+sidra.varmen = tibble(sidra.varmen$`Mês (Código)`,
+                      sidra.varmen$Valor, 
+                      sidra.varmen$`Geral, grupo, subgrupo, item e subitem`) %>% 
+  rename(date = 'sidra.varmen$`Mês (Código)`', 
+         indice = 'sidra.varmen$Valor',
+         grupo = 'sidra.varmen$`Geral, grupo, subgrupo, item e subitem`')
+
+
+sidra.acum12 = tibble(sidra.acum12$`Mês (Código)`, 
+                      sidra.acum12$Valor, 
+                      sidra.acum12$`Geral, grupo, subgrupo, item e subitem`) %>% 
+  rename(date = 'sidra.acum12$`Mês (Código)`', 
+         indice = 'sidra.acum12$Valor',
+         grupo = 'sidra.acum12$`Geral, grupo, subgrupo, item e subitem`')
+
+
+sidra.acumA = tibble(sidra.acumA$`Mês (Código)`, 
+                      sidra.acumA$Valor, 
+                      sidra.acumA$`Geral, grupo, subgrupo, item e subitem`) %>% 
+  rename(date = 'sidra.acumA$`Mês (Código)`', 
+         indice = 'sidra.acumA$Valor',
+         grupo = 'sidra.acumA$`Geral, grupo, subgrupo, item e subitem`')
+
+
+t.sidra.varmen = sidra.varmen %>% 
+  pivot_wider(names_from = 'grupo', values_from = 'indice') %>% 
+  rename(Geral = 'Índice geral',
+         Alimentação = '1.Alimentação e bebidas',
+         Habitação = '2.Habitação',
+         Residência = '3.Artigos de residência',
+         Vestuário = '4.Vestuário',
+         Transporte = '5.Transportes',
+         Saúde = '6.Saúde e cuidados pessoais',
+         Despesas = '7.Despesas pessoais',
+         Educação = '8.Educação',
+         Comunicação = '9.Comunicação') %>% 
+  dplyr::mutate(date = lubridate::ym(`date`))
+
+
+
+t.sidra.acum12 = sidra.acum12 %>% pivot_wider(names_from = 'grupo', values_from = 'indice') %>% 
+  rename(Geral = 'Índice geral',
+         Alimentação = '1.Alimentação e bebidas',
+         Habitação = '2.Habitação',
+         Residência = '3.Artigos de residência',
+         Vestuário = '4.Vestuário',
+         Transporte = '5.Transportes',
+         Saúde = '6.Saúde e cuidados pessoais',
+         Despesas = '7.Despesas pessoais',
+         Educação = '8.Educação',
+         Comunicação = '9.Comunicação') %>% 
+  dplyr::mutate(date = lubridate::ym(`date`))
+
+
+t.sidra.acumA = sidra.acumA %>% pivot_wider(names_from = 'grupo', values_from = 'indice') %>% 
+  rename(Geral = 'Índice geral',
+         Alimentação = '1.Alimentação e bebidas',
+         Habitação = '2.Habitação',
+         Residência = '3.Artigos de residência',
+         Vestuário = '4.Vestuário',
+         Transporte = '5.Transportes',
+         Saúde = '6.Saúde e cuidados pessoais',
+         Despesas = '7.Despesas pessoais',
+         Educação = '8.Educação',
+         Comunicação = '9.Comunicação') %>% 
+  dplyr::mutate(date = lubridate::ym(`date`))
+
 ```
 
 
-Sidebar {.sidebar}
+Geral{data-orientation=rows}
 =======================================================================
+
+Sidebar {.sidebar}
+-----------------------------------------------------------------------
 
 ```{r}
 shiny::h1("sobre")
@@ -98,10 +187,10 @@ shiny::h3("Desenvolvido para o acompanhamento das variáveis monetárias")
 shiny::dateRangeInput(
   inputId = "fill",
   label = shiny::h3("Escolha um período"),
-  min = min(inflacao$date),
-  max = max(inflacao$date),
-  start = min(inflacao$date),
-  end = max(inflacao$date),
+  min = min(data$date),
+  max = max(data$date),
+  start = min(data$date),
+  end = max(data$date),
   language = "Pt-BR",
   format = "yyyy-mm",
   startview = "year",
@@ -119,14 +208,10 @@ shiny::varSelectInput(
 ```
 
 
-Politica Monetária
-=======================================================================
-
-
 Row
 -----------------------------------------------------------------------
 
-### Inflação atual {.value-box}
+### IPCA acumulado 12 meses - Bacen {.value-box}
 ```{r}
 renderValueBox({
   valueBox(
@@ -137,7 +222,7 @@ renderValueBox({
 })
 ```
 
-### Inflação %VAR {.value-box}
+### Inflação %VAR - Bacen {.value-box}
 ```{r}
 renderValueBox({
   valueBox(
@@ -148,7 +233,7 @@ renderValueBox({
 })
 ```
 
-### Taxa de juros - SELIC {.value-box}
+### Taxa de juros - Bacen {.value-box}
 ```{r}
 renderValueBox({
   valueBox(
@@ -159,11 +244,11 @@ renderValueBox({
 })
 ```
 
-### Juros real {.value-box}
+### Juros real - Bacen {.value-box}
 ```{r}
 renderValueBox({
   valueBox(
-    value = juros_real,
+    value = juros_reais,
     icon = "fa-percent",
     color = "#3498DB"
   )
@@ -199,3 +284,104 @@ DT::renderDT(
 )
 ```
 
+
+
+Inflação{data-orientation=rows}
+=======================================================================
+
+Sidebar {.sidebar}
+-----------------------------------------------------------------------
+```{r}
+shiny::h1("sobre")
+shiny::h3("Desenvolvido para o acompanhamento das variáveis monetárias")
+
+shiny::dateRangeInput(
+  inputId = "fill2",
+  label = shiny::h3("Escolha um período"),
+  min = min(t.sidra.varmen$date),
+  max = max(t.sidra.varmen$date),
+  start = min(t.sidra.varmen$date),
+  end = max(t.sidra.varmen$date),
+  language = "Pt-BR",
+  format = "yyyy-mm",
+  startview = "year",
+  separator = " - "
+  )
+
+
+shiny::selectInput(
+  input = "dataset",
+  choices = c('t.sidra.varmen', 't.sidra.acum12', 't.sidra.acumA'),
+  label = shiny::h3("Escolha uma categoria"),
+  selected = "",
+)
+
+
+
+shiny::varSelectInput(
+  inputId = "series2",
+  label = shiny::h3("Escolha uma série"),
+  data = t.sidra.varmen[-1],
+  selected = names(t.sidra.varmen)[[2]],
+)
+
+```
+
+
+
+Column {.tabset .tabset-fade data-height=600}
+-----------------------------------------------------------------------
+
+### Séries 
+```{r}
+renderPlotly(
+  datasetInput() %>%
+    filter(date >= input$fill2[1] & date <= input$fill2[2]) %>%
+    ggplot() + 
+    aes(x = date, y = !!input$series2) +
+    geom_line(color = "blue", size = 1) + 
+    labs(y = "%",
+         x = "", 
+         caption = "Fonte: bacen")
+)
+```
+
+
+
+Column {.tabset .tabset-fade data-height=600}
+-----------------------------------------------------------------------
+
+### IPCA - Variação mensal 
+```{r}
+DT::renderDT(
+  t.sidra.varmen %>% 
+    DT::datatable(
+      options = list(pageLength = 5, order = list(list(1, 'desc'))),
+      caption = "Fonte: SIDRA/IBGE"
+    )
+)
+```
+
+
+### IPCA - Acumulado 12 meses
+```{r}
+DT::renderDT(
+  t.sidra.acum12 %>% 
+    DT::datatable(
+      options = list(pageLength = 5, order = list(list(1, 'desc'))),
+      caption = "Fonte: SIDRA/IBGE"
+    )
+)
+```
+
+
+### IPCA - Acumulado no ano
+```{r}
+DT::renderDT(
+  t.sidra.acumA %>% 
+    DT::datatable(
+      options = list(pageLength = 5, order = list(list(1, 'desc'))),
+      caption = "Fonte: SIDRA/IBGE"
+    )
+)
+```
