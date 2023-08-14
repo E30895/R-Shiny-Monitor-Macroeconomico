@@ -1,6 +1,6 @@
 # Notas do autor
 
-Dashboard desenvolvido para o acompanhamento das principais variáveis macroeconomicas & monetárias. Disponível em: https://shorturl.hk/aExreW
+Dashboard desenvolvido para o acompanhamento das principais variáveis macroeconomicas & monetárias. Disponível em: https://e30895.shinyapps.io/dash/
 
 ***Atulização contínua***
 
